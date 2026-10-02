@@ -7,11 +7,10 @@ import SimpleITK as sitk
 
 import matplotlib.pyplot as plt
 import time
-from functools import cached_property
 
 from common import Image
 from algebra import *
-from attrs import field, define
+from timeit import timeit
 
 from math import pi
 import trimesh
@@ -95,14 +94,12 @@ class CtProjector:
         return all_alphas
 
     def _identify_rhos(self, rays_origin, line_directions, line_lengths, all_alphas):
-        with cProfile.Profile() as pr:
-            line_start_ends = np.vstack((rays_origin + line_directions * line_lengths * all_alphas[None, :,0:1], rays_origin + line_directions * line_lengths * all_alphas[None, :,-1:]))
-            begins_ijk = matrix_transform(self._image.xyz_to_ijk_matrix, line_start_ends[0] + line_directions*1e-8)
-            ends_ijk = matrix_transform(self._image.xyz_to_ijk_matrix, line_start_ends[1] + line_directions*1e-8)
-            spread_ijk = ends_ijk - begins_ijk
-            rhos = np.rint(begins_ijk[:, None, :] + spread_ijk[:, None, :] * all_alphas[..., None])[:,:-1,:].astype(int)
-            pr.print_stats()
-        return rhos
+        line_start_ends = (rays_origin[None,...] + line_directions[None,...] * line_lengths[None,...] * all_alphas[:,[0,-1]].T[...,None])
+        ijk = matrix_transform(self._image.xyz_to_ijk_matrix, line_start_ends + line_directions*1e-8)
+        begins_ijk = ijk[0]
+        ends_ijk = ijk[1]
+        spread_ijk = ends_ijk - begins_ijk
+        return np.rint(begins_ijk[:, None, :] + spread_ijk[:, None, :] * all_alphas[..., None])[:,:-1,:].astype(int)
 
     def render_xray(
         self,
@@ -118,7 +115,7 @@ class CtProjector:
         _, line_directions, line_lengths = self._define_projection_lines(uvn_frame, pixel_resolution, image_size)
         
         all_alphas = self._identify_alphas(rays_origin, line_directions, line_lengths)
-        ls = (np.abs(np.diff(all_alphas, axis=1)) * line_lengths).astype(np.float64) 
+        ls = (np.abs(np.diff(all_alphas, axis=1)) * line_lengths)
 
         rhos = self._identify_rhos(rays_origin, line_directions, line_lengths, all_alphas)
         traversed_voxels = self._image.ct_array[rhos[:,:,0], rhos[:,:,1], rhos[:,:,2]]
@@ -142,12 +139,15 @@ def main():
     
     ct_projector = CtProjector(image)
 
-    #with cProfile.Profile() as pr:
-    ct_projector.render_xray(500.0, 0.0, 0.0, 0.0, 2.0, (256,256))
-    #    pr.print_stats()
-    exit()
-    plt.show()
-    #exit()
+    # with cProfile.Profile() as pr:
+    b=time()
+    ct_projector.render_xray(500.0, 0.0, 0.0, 0.0, 1.2, (256,256))
+    print(time() - b)
+    #plt.axis("off")
+    #plt.tight_layout()
+    #plt.show()
+    #     pr.print_stats()
+    # exit()
     
     uvn_frame = ct_projector._define_uvn_frame(500.0)
     frame_origin = uvn_frame[:3, 3]
@@ -170,14 +170,15 @@ def main():
     pl.add_points(pixel_grid, color="red")
     pl.add_mesh(coordinate_system)
 
-    #image_origin, image_planes = ct_projector._image.intersection_planes()
-    #offsets = [[float(ct_projector._image.spacing[i] * j) for j in range(ct_projector._image.ct_array.shape[i] + 1)] for i in range(3)]
-    #colors = ["red", "green", "blue"]
-    #for i in range(3):
-    #    offset_direction = np.array([0,0,0])
-    #    offset_direction[i] = 1.0
-    #    for o in offsets[i]:
-    #        pl.add_mesh(pv.Plane(center=image_origin + (offset_direction*o), direction=image_planes[i], i_size=100, j_size=100), color=colors[i])
+    image_origin, image_planes = ct_projector._image.intersection_planes()
+    offsets = [[float(ct_projector._image.spacing[i] * j) for j in range(ct_projector._image.ct_array.shape[i] + 1)] for i in range(3)]
+    colors = ["red", "green", "blue"]
+    for i in range(3):
+       offset_direction = np.array([0,0,0])
+       offset_direction[i] = 1.0
+       for o in offsets[i][::100]:
+           pl.add_mesh(pv.Plane(center=image_origin + (offset_direction*o), direction=image_planes[i], i_size=1000, j_size=1000), color=colors[i], opacity=0.2)
+
     #lines = []
     #for l in range(0,len(pixel_locations), 100):
     #    lines.append(rays_origin[0])

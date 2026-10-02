@@ -1,15 +1,21 @@
 import numpy as np
 from math import cos, sin
+from time import time
 
 def matrix_transform(matrix:np.ndarray, coordinates:np.ndarray) -> np.ndarray:
     coordinates = np.asarray(coordinates)
-    if coordinates.ndim == 1:
-        coordinates = coordinates[None, ...]
+    if coordinates.ndim == 3: 
+        h_dim = list(coordinates.shape[:-1]) + [1]
+        h_coords = np.concatenate((coordinates, np.ones(h_dim)), axis=-1)
+        h_coords = (matrix @ h_coords.transpose(0,2,1)).transpose(0,2,1)
+    else:
+        if coordinates.ndim == 1:
+            coordinates = coordinates[None, ...]
 
-    h_coords = np.hstack((coordinates, np.ones((len(coordinates), 1))))
-    h_coords = (matrix @ h_coords.T).T
-    h_coords /= h_coords[:, 3:]
-    return h_coords[:, :3]
+        h_coords = np.hstack((coordinates, np.ones((len(coordinates), 1))))
+        h_coords = (matrix @ h_coords.T).T
+    h_coords /= h_coords[..., 3:]
+    return h_coords[..., :3]
 
 
 def lines_parallel_planes_intersection(l_0:np.ndarray, l_dir:np.ndarray, l_length:float, p_0:np.ndarray, p_n:np.ndarray, offsets:np.ndarray):
